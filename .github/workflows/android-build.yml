@@ -20,16 +20,18 @@ jobs:
             echo "GrimDeck.zip not found in repository root"
             exit 1
           fi
-          rm -rf build-src
-          mkdir build-src
+          rm -rf build-src apk-output
+          mkdir build-src apk-output
           unzip -q GrimDeck.zip -d build-src
-          PROJECT_DIR=$(find build-src -maxdepth 3 -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -printf '%h\n' | head -n 1)
+          PROJECT_DIR=$(find build-src -maxdepth 4 -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -printf '%h\n' | head -n 1)
           if [ -z "$PROJECT_DIR" ]; then
             echo "No Gradle Android project found inside GrimDeck.zip"
-            find build-src -maxdepth 3 -type f | sort | head -n 200
+            find build-src -maxdepth 5 -type f | sort | head -n 200
             exit 1
           fi
           echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Detected project dir: $PROJECT_DIR"
+          find "$PROJECT_DIR" -maxdepth 2 -type f | sort
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -39,6 +41,8 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.5'
 
       - name: Make Gradle wrapper executable
         run: |
@@ -56,11 +60,14 @@ jobs:
             gradle assembleDebug
           fi
 
+      - name: Collect APK
+        run: |
+          find "$PROJECT_DIR" -type f -path "*/build/outputs/apk/*/*.apk" -print -exec cp {} "$GITHUB_WORKSPACE/apk-output/" \;
+          ls -lah "$GITHUB_WORKSPACE/apk-output"
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: GrimDeck-debug-apk
-          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          path: apk-output/*.apk
           if-no-files-found: error
-
-# trigger: grimdeck-zip-build
