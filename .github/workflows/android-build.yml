@@ -20,7 +20,7 @@ jobs:
             echo "GrimDeck.zip not found in repository root"
             exit 1
           fi
-          rm -rf build-src apk-output
+          rm -rf build-src apk-output build-log.txt
           mkdir build-src apk-output
           unzip -q GrimDeck.zip -d build-src
           PROJECT_DIR=$(find build-src -maxdepth 4 -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) -printf '%h\n' | head -n 1)
@@ -44,28 +44,43 @@ jobs:
         with:
           gradle-version: '8.5'
 
+      - name: Generate Gradle wrapper
+        run: |
+          cd "$PROJECT_DIR"
+          if [ ! -f ./gradlew ]; then
+            gradle wrapper --gradle-version=8.5
+          fi
+
       - name: Make Gradle wrapper executable
         run: |
           cd "$PROJECT_DIR"
-          if [ -f ./gradlew ]; then
-            chmod +x ./gradlew
-          fi
+          chmod +x ./gradlew
 
       - name: Build debug APK
         run: |
+          set +e
           cd "$PROJECT_DIR"
-          if [ -f ./gradlew ]; then
-            ./gradlew assembleDebug
-          else
-            gradle assembleDebug
-          fi
+          ./gradlew assembleDebug --no-daemon --stacktrace --warning-mode all 2>&1 | tee "$GITHUB_WORKSPACE/build-log.txt"
+          status=${PIPESTATUS[0]}
+          echo "Gradle exit status: $status" | tee -a "$GITHUB_WORKSPACE/build-log.txt"
+          exit $status
 
       - name: Collect APK
+        if: always()
         run: |
           find "$PROJECT_DIR" -type f -path "*/build/outputs/apk/*/*.apk" -print -exec cp {} "$GITHUB_WORKSPACE/apk-output/" \;
-          ls -lah "$GITHUB_WORKSPACE/apk-output"
+          ls -lah "$GITHUB_WORKSPACE/apk-output" || true
+
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GrimDeck-build-log
+          path: build-log.txt
+          if-no-files-found: warn
 
       - name: Upload APK artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: GrimDeck-debug-apk
